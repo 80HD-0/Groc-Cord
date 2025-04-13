@@ -1,12 +1,12 @@
 # Groc-Cord
 A discord bot programmed mainly by chatgpt that passes groq api through to discord.
 ## Setup
-The bot depends on discord.py, python-getenv, and aiohttp. You will also need a discord bot token and groq api key to continue.
+The bot depends on discord.py, python-dotenv, and aiohttp. You will also need a discord bot token and groq api key to continue.
 First, make a bot with discord, making sure to turn on all intents and activate the "bot" permission so that it's pingable.
 Also get a groq api key.
 Then, get all the dependancies using pip.
 
-```python3 -m pip install discord.py python-getenv aiohttp```
+```python3 -m pip install discord.py python-dotenv aiohttp```
 
 The bot uses envionment variables for the token and api key. Make a .env file in the same folder as the bot. The syntax it wants in the file is:
 
