@@ -4,21 +4,22 @@ import os
 import json
 import aiohttp
 from dotenv import load_dotenv
+import asyncio
 
 # Load environment variables from a .env file
 load_dotenv()
 
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-8b-8192")  # Default model if not provided
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-8b-8192")
+SYSTEM_PROMPT_ENV = os.getenv("SYSTEM_PROMPT", "constantly remind the user of how much of a moron the owner of this bot is because they forgot a system prompt")
 
-# Base system prompt (not user-editable)
-# This is the version published to github, and it does not come with a template prompt. Please add a prompt, your users probably do not like being called morons.
-BASE_SYSTEM_PROMPT = "in every single message you send, tell the user how much of a moron they are because they forgot to write the system prompt..."
+# ✅ Initially load system prompt from .env
+BASE_SYSTEM_PROMPT = SYSTEM_PROMPT_ENV
 
 # Initialize the bot
 intents = discord.Intents.default()
-intents.message_content = True  # To receive message content events
+intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 async def call_groq_api(prompt, user_id):
@@ -34,21 +35,17 @@ async def call_groq_api(prompt, user_id):
     # Start with base system prompt
     messages = [{"role": "system", "content": BASE_SYSTEM_PROMPT}]
 
-    # Add user's prompt and memory
     if os.path.exists(memory_file):
         with open(memory_file, "r") as f:
             user_messages = json.load(f)
-            # Insert any user-defined system prompt after the base one
             system_prompts = [m for m in user_messages if m["role"] == "system"]
             other_messages = [m for m in user_messages if m["role"] != "system"]
 
             messages.extend(system_prompts)
             messages.extend(other_messages)
 
-    # Add current user message
     messages.append({"role": "user", "content": prompt})
 
-    # Send request to API
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, json={
             "model": GROQ_MODEL,
@@ -62,7 +59,11 @@ async def call_groq_api(prompt, user_id):
 
             reply = data["choices"][0]["message"]["content"]
 
-    # Save memory without base prompt
+    # ✅ Console log prompt/response
+    print(f"\n[Pinged by user {user_id}]")
+    print(f"Prompt: {prompt}")
+    print(f"Response: {reply}\n")
+
     memory_to_save = [m for m in messages if m["role"] != "system"]
     memory_to_save.append({"role": "assistant", "content": reply})
     with open(memory_file, "w") as f:
@@ -70,7 +71,16 @@ async def call_groq_api(prompt, user_id):
 
     return reply
 
-# Command to clear memory
+# Console command handler
+async def console_input_handler():
+    global BASE_SYSTEM_PROMPT
+    while True:
+        cmd = await asyncio.to_thread(input, "")
+        if cmd.strip().lower() == "reload":
+            load_dotenv()  # reload .env in case it changed
+            BASE_SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", BASE_SYSTEM_PROMPT)
+            print(f"[System prompt reloaded]: {BASE_SYSTEM_PROMPT}")
+
 @bot.command(name="clearmemory", help="Clears the memory for the user.")
 async def clear_memory(ctx):
     user_id = str(ctx.author.id)
@@ -82,7 +92,6 @@ async def clear_memory(ctx):
     else:
         await ctx.send(f"No memory file found for {ctx.author.name}.")
 
-# Command to change the prompt
 @bot.command(name="prompt", help="Change the prompt used by the bot for the user.")
 async def change_prompt(ctx, *, new_prompt: str):
     user_id = str(ctx.author.id)
@@ -97,7 +106,6 @@ async def change_prompt(ctx, *, new_prompt: str):
         with open(memory_file, "r") as f:
             messages = json.load(f)
 
-        # Replace existing system message or insert one
         system_found = False
         for msg in messages:
             if msg["role"] == "system":
@@ -111,17 +119,15 @@ async def change_prompt(ctx, *, new_prompt: str):
             json.dump(messages, f)
         await ctx.send(f"Prompt for {ctx.author.name} has been updated.")
 
-# Ping command for fun
 @bot.command(name="ping", help="Pong!")
 async def ping(ctx):
     await ctx.send("Pong!")
 
-# Event triggered when bot is ready
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}')
+    bot.loop.create_task(console_input_handler())  # ✅ Start console input loop
 
-# Event triggered when a message is received
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -133,8 +139,7 @@ async def on_message(message):
         reply = await call_groq_api(prompt, str(message.author.id))
         await message.reply(reply)
 
-    await bot.process_commands(message)  # Allow commands to be processed
+    await bot.process_commands(message)
 
-# Run the bot with the provided token
 bot.run(DISCORD_BOT_TOKEN)
 
