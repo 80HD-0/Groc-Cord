@@ -8,11 +8,19 @@ Then, get all the dependancies using pip.
 
 ```python3 -m pip install discord.py python-dotenv aiohttp```
 
-The bot uses envionment variables for the system prompt, token, and api key. Make a .env file in the same folder as the bot. The syntax it wants in the file is:
+The bot uses envionment variables for the 3 system prompts, token, and api key. Make a .env file in the same folder as the bot. The syntax it wants in the file is:
 
 <pre>DISCORD_BOT_TOKEN = "(your token)"
 GROQ_API_KEY = "(your api key)"
-SYSTEM-PROMPT = "(your system prompt)"</pre>
+SYSTEM_PROMPT_1 = "(your system prompt)"
+SYSTEM_PROMPT_2 = "(your system prompt)"
+SYSTEM_PROMPT_3 = "(your system prompt)"</pre>
+
+if you have multiple system prompts, you will want to set up names for them, like "pirate," "Gnarp," etc. They are in the code (shiver me timbers) at line 18. it looks like this:
+
+    "1": os.getenv("SYSTEM_PROMPT_1", (the fallback prompt that happens when you forget to make one))
+
+where that highlighted text is what you change to change the prompt name.
 
 then you should be good to go to run the bot:
 
@@ -28,13 +36,15 @@ There is only 1 console command so far:
 -reload, which reloads the prompt
 
 
-The bot just uses 3 commands:
+The bot just uses 4 commands:
 
 -!ping, which just replies with pong
 
 -!clearmemory, which clears the bot's memory of that user
 
--!prompt, which adds a user-defined prompt that is appended to the system prompt
+-!prompt (prompt), which adds a user-defined prompt that is appended to the system prompt
+
+-!sysprompt (prompt name), which changes the system prompt for that user between the 3.
 
 
 
