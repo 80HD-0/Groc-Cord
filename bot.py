@@ -130,7 +130,7 @@ async def change_prompt(ctx, choice: str):
 
         with open(memory_file, "w") as f:
             json.dump(messages, f)
-        await ctx.send(f"Prompt for {ctx.author.name} has been updated to: {choice} ({selected_prompt})")
+        await ctx.send(f"Prompt for {ctx.author.name} has been updated to: {choice}")
 
 @bot.command(name="shrimp", help="Generates a random shrimp fact.")
 async def shrimp_fact(ctx):
