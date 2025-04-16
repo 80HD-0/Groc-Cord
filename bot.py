@@ -114,7 +114,7 @@ async def change_prompt(ctx, choice: str):
         os.makedirs("user_memory", exist_ok=True)
         with open(memory_file, "w") as f:
             json.dump([{"role": "system", "content": selected_prompt}], f)
-        await ctx.send(f"Prompt for {ctx.author.name} has been set to: {choice} ({selected_prompt})")
+        await ctx.send(f"Prompt for {ctx.author.name} has been set to: {choice}")
     else:
         with open(memory_file, "r") as f:
             messages = json.load(f)
