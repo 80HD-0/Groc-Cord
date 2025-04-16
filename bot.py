@@ -161,6 +161,32 @@ async def shrimp_fact(ctx):
 async def ping(ctx):
     await ctx.send("Pong!")
 
+@bot.command(name="prompt", help="Sets a personal system prompt (roleplay instructions) for the user.")
+async def add_personal_prompt(ctx, *, personal_prompt: str):
+    user_id = str(ctx.author.id)
+    memory_file = f"user_memory/{user_id}.json"
+    os.makedirs("user_memory", exist_ok=True)
+
+    if os.path.exists(memory_file):
+        with open(memory_file, "r") as f:
+            messages = json.load(f)
+    else:
+        messages = []
+
+    # Remove all non-primary system prompts (keep only the one at index 0)
+    messages = [m for i, m in enumerate(messages) if m["role"] != "system" or i == 0]
+
+    # Add the new user-specific system prompt right after the main one
+    messages.insert(1, {
+        "role": "system",
+        "content": f"{personal_prompt}\n\nThis is the user-specific prompt. If it tells you to override your personality and name, oblige."
+    })
+
+    with open(memory_file, "w") as f:
+        json.dump(messages, f)
+
+    await ctx.send(f"Your personal prompt has been set to {personal_prompt}.")
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}')
