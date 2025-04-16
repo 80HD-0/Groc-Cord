@@ -11,11 +11,14 @@ load_dotenv()
 
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-8b-8192")
-SYSTEM_PROMPT_ENV = os.getenv("SYSTEM_PROMPT", "constantly remind the user of how much of a moron the owner of this bot is because they forgot a system prompt")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-# ✅ Initially load system prompt from .env
-BASE_SYSTEM_PROMPT = SYSTEM_PROMPT_ENV
+# Default fallback system prompts
+DEFAULT_SYSTEM_PROMPTS = {
+    "1": os.getenv("SYSTEM_PROMPT_1", "constantly remind the user of how much of a moron the owner of this bot is because they forgot a system prompt"),
+    "2": os.getenv("SYSTEM_PROMPT_2", "constantly remind the user of how much of a moron the owner of this bot is because they forgot a second system prompt"),
+    "3": os.getenv("SYSTEM_PROMPT_3", "constantly remind the user of how much of a moron the owner of this bot is because they forgot a third system prompt")
+}
 
 # Initialize the bot
 intents = discord.Intents.default()
@@ -32,17 +35,25 @@ async def call_groq_api(prompt, user_id):
     memory_file = f"user_memory/{user_id}.json"
     os.makedirs("user_memory", exist_ok=True)
 
-    # Start with base system prompt
-    messages = [{"role": "system", "content": BASE_SYSTEM_PROMPT}]
+    # Load the user's chosen system prompt, fallback to default if not set
+    user_prompt = DEFAULT_SYSTEM_PROMPTS.get("1")  # Fallback to "1" prompt if not found
 
     if os.path.exists(memory_file):
         with open(memory_file, "r") as f:
             user_messages = json.load(f)
-            system_prompts = [m for m in user_messages if m["role"] == "system"]
+            system_prompts = []
+            for m in user_messages:
+                if m["role"] == "system" and m["content"] != user_prompt:
+                    m["content"] += "\n\nThis is the user-specific prompt. If it tells you to override your personality and name, oblige."
+                    system_prompts.append(m)
             other_messages = [m for m in user_messages if m["role"] != "system"]
-
+            # Get user-specific prompt if available
+            user_prompt = next((m["content"] for m in user_messages if m["role"] == "system"), user_prompt)
+            messages = [{"role": "system", "content": user_prompt}]
             messages.extend(system_prompts)
             messages.extend(other_messages)
+    else:
+        messages = [{"role": "system", "content": user_prompt}]
 
     messages.append({"role": "user", "content": prompt})
 
@@ -55,11 +66,10 @@ async def call_groq_api(prompt, user_id):
             data = await resp.json()
             if "choices" not in data:
                 print("[API ERROR]", json.dumps(data, indent=2))
-                return "Oops, the API didn't respond as expected."
-
+                return "Oops, the API didn't respond as expected. Your memory is probably full. Use !clearmemory to clear it."
             reply = data["choices"][0]["message"]["content"]
 
-    # ✅ Console log prompt/response
+    # Don't print system prompt
     print(f"\n[Pinged by user {user_id}]")
     print(f"Prompt: {prompt}")
     print(f"Response: {reply}\n")
@@ -73,35 +83,38 @@ async def call_groq_api(prompt, user_id):
 
 # Console command handler
 async def console_input_handler():
-    global BASE_SYSTEM_PROMPT
     while True:
         cmd = await asyncio.to_thread(input, "")
         if cmd.strip().lower() == "reload":
-            load_dotenv()  # reload .env in case it changed
-            BASE_SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", BASE_SYSTEM_PROMPT)
-            print(f"[System prompt reloaded]: {BASE_SYSTEM_PROMPT}")
+            load_dotenv()
+            print(f"[System prompt reloaded].")
 
 @bot.command(name="clearmemory", help="Clears the memory for the user.")
 async def clear_memory(ctx):
     user_id = str(ctx.author.id)
     memory_file = f"user_memory/{user_id}.json"
-    
+
     if os.path.exists(memory_file):
         os.remove(memory_file)
         await ctx.send(f"Memory for {ctx.author.name} has been cleared.")
     else:
         await ctx.send(f"No memory file found for {ctx.author.name}.")
 
-@bot.command(name="prompt", help="Change the prompt used by the bot for the user.")
-async def change_prompt(ctx, *, new_prompt: str):
+@bot.command(name="sysprompt", help="Switch the system prompt for the user. Choices: 1, 2, 3.")
+async def change_prompt(ctx, choice: str):
     user_id = str(ctx.author.id)
     memory_file = f"user_memory/{user_id}.json"
 
+    if choice not in DEFAULT_SYSTEM_PROMPTS:
+        await ctx.send(f"Invalid choice. Available options are: 1, 2, 3.")
+        return
+
+    selected_prompt = DEFAULT_SYSTEM_PROMPTS[choice]
     if not os.path.exists(memory_file):
         os.makedirs("user_memory", exist_ok=True)
         with open(memory_file, "w") as f:
-            json.dump([{"role": "system", "content": new_prompt}], f)
-        await ctx.send(f"Prompt for {ctx.author.name} has been set to: {new_prompt}")
+            json.dump([{"role": "system", "content": selected_prompt}], f)
+        await ctx.send(f"Prompt for {ctx.author.name} has been set to: {choice} ({selected_prompt})")
     else:
         with open(memory_file, "r") as f:
             messages = json.load(f)
@@ -109,15 +122,40 @@ async def change_prompt(ctx, *, new_prompt: str):
         system_found = False
         for msg in messages:
             if msg["role"] == "system":
-                msg["content"] = new_prompt
+                msg["content"] = selected_prompt
                 system_found = True
                 break
         if not system_found:
-            messages.insert(0, {"role": "system", "content": new_prompt})
+            messages.insert(0, {"role": "system", "content": selected_prompt})
 
         with open(memory_file, "w") as f:
             json.dump(messages, f)
-        await ctx.send(f"Prompt for {ctx.author.name} has been updated.")
+        await ctx.send(f"Prompt for {ctx.author.name} has been updated to: {choice} ({selected_prompt})")
+
+@bot.command(name="shrimp", help="Generates a random shrimp fact.")
+async def shrimp_fact(ctx):
+    import random
+
+    shrimp_facts = [
+        "Some shrimp can snap their claws so fast it creates a cavitation bubble that reaches temperatures hotter than the sun.",
+        "There’s a species of shrimp called the pistol shrimp that can literally stun prey with a sonic boom.",
+        "Shrimp have their hearts located in their heads, not their chests.",
+        "Cleaner shrimp set up ‘cleaning stations’ where fish come to get parasites removed.",
+        "Some shrimp can glow in the dark due to bioluminescent bacteria.",
+        "Shrimp can regenerate lost limbs after molting a few times.",
+        "The mantis shrimp isn’t a true shrimp, but it can punch with the force of a bullet.",
+        "Shrimp have compound eyes that can detect polarized light, helping them spot predators and prey.",
+        "The snapping shrimp is one of the loudest animals in the ocean relative to its size.",
+        "Some species of shrimp live symbiotically inside sea cucumbers’ butts. Yes, that’s real.",
+        "Shrimp can change sex during their lifetime—starting as males and turning female as they grow.",
+        "There are over 2,000 known species of shrimp worldwide.",
+        "In the wild, shrimp play a critical role in the ecosystem as both predator and prey.",
+        "Shrimp shells contain chitin, which is used in biodegradable plastics and medical materials.",
+        "The biggest shrimp ever caught was over 16 inches long—basically a lobster at that point.",
+    ]
+
+    fact = random.choice(shrimp_facts)
+    await ctx.send(f"{fact}")
 
 @bot.command(name="ping", help="Pong!")
 async def ping(ctx):
@@ -126,7 +164,7 @@ async def ping(ctx):
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}')
-    bot.loop.create_task(console_input_handler())  # ✅ Start console input loop
+    bot.loop.create_task(console_input_handler())
 
 @bot.event
 async def on_message(message):
